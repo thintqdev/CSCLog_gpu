@@ -33,14 +33,14 @@ class SequenceGenerator:
         if not (6 <= window_size <= 14):
             raise ValueError(f"window_size must be between 6 and 14, got {window_size}")
     
-    def generate_sequences(self, jsonl_path: str, event_mapping: Dict[int, str],
+    def generate_sequences(self, structured_csv: str, event_mapping: Dict[int, str],
                           component_ids: List[int], output_path: str,
                           progress_bar: bool = True) -> pd.DataFrame:
         """
-        Generate EventSequences from logs
+        Generate EventSequences from structured logs
         
         Args:
-            jsonl_path: Path to original JSONL file
+            structured_csv: Path to structured CSV from Drain parser
             event_mapping: Dict mapping log_index -> EventId
             component_ids: List of component IDs for each log
             output_path: Path to save sequences CSV
@@ -51,8 +51,12 @@ class SequenceGenerator:
         """
         print(f"Generating sequences with window_size={self.window_size}, type={self.session_type}...")
         
-        # Load logs with timestamps
-        logs = self._load_logs_with_metadata(jsonl_path, event_mapping, component_ids, progress_bar)
+        # Load structured logs with timestamps
+        logs = self._load_structured_logs(structured_csv, event_mapping, component_ids, progress_bar)
+        
+        if len(logs) == 0:
+            print("ERROR: No logs loaded!")
+            return pd.DataFrame(columns=['SessionId', 'EventSequence', 'Label'])
         
         # Generate sequences based on session type
         if self.session_type == "sliding":
@@ -71,53 +75,46 @@ class SequenceGenerator:
         
         return df
     
-    def _load_logs_with_metadata(self, jsonl_path: str, event_mapping: Dict[int, str],
-                                 component_ids: List[int], progress_bar: bool = True) -> List[Tuple]:
+    def _load_structured_logs(self, structured_csv: str, event_mapping: Dict[int, str],
+                              component_ids: List[int], progress_bar: bool = True) -> List[Tuple]:
         """
-        Load logs with EventId, ComponentId, and Timestamp
+        Load logs from structured CSV with EventId, ComponentId, and Timestamp
         
         Returns:
             List of (EventId, ComponentId, Timestamp) tuples
         """
         logs = []
         
-        with open(jsonl_path, 'r', encoding='utf-8') as f:
-            total_lines = sum(1 for _ in f)
+        print(f"Loading structured logs from {structured_csv}...")
+        structured_df = pd.read_csv(structured_csv)
         
-        with open(jsonl_path, 'r', encoding='utf-8') as f:
-            iterator = tqdm(f, total=total_lines, desc="Loading logs") if progress_bar else f
-            
-            for idx, line in enumerate(iterator):
-                try:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    # Parse JSONL
-                    # Format: app.kolla: [timestamp, {log_data}]
-                    # Format: remote.*: [timestamp, {log_data}]
-                    if ':' in line:
-                        parts = line.split(':', 1)
-                        if len(parts) == 2:
-                            json_part = parts[1].strip()
-                            data = json.loads(json_part)
-                            if isinstance(data, list) and len(data) >= 2:
-                                log_data = data[1]
-                                timestamp = log_data.get('timestamp', '')
-                                
-                                # Skip if no timestamp
-                                if not timestamp:
-                                    continue
-                                
-                                # Get EventId and ComponentId
-                                if idx in event_mapping:
-                                    event_id = event_mapping[idx]
-                                    component_id = component_ids[idx] if idx < len(component_ids) else -1
-                                    
-                                    logs.append((event_id, component_id, timestamp))
-                
-                except Exception as e:
+        print(f"Structured CSV has {len(structured_df)} rows")
+        print(f"Event mapping has {len(event_mapping)} entries")
+        print(f"Component IDs has {len(component_ids)} entries")
+        
+        iterator = tqdm(structured_df.iterrows(), total=len(structured_df), desc="Loading logs") if progress_bar else structured_df.iterrows()
+        
+        for idx, row in iterator:
+            try:
+                # Get EventId from the row
+                event_id = row.get('EventId')
+                if not event_id or pd.isna(event_id):
                     continue
+                
+                # Get timestamp
+                timestamp = row.get('Timestamp', '')
+                if not timestamp or pd.isna(timestamp):
+                    continue
+                
+                # Get component ID
+                component_id = component_ids[idx] if idx < len(component_ids) else -1
+                
+                logs.append((event_id, component_id, timestamp))
+                
+            except Exception as e:
+                if idx < 10:
+                    print(f"Warning: Error at row {idx}: {e}")
+                continue
         
         print(f"Loaded {len(logs)} log entries with metadata")
         return logs

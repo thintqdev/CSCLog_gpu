@@ -57,7 +57,7 @@ class PreprocessingPipeline:
             # Stage 1: Log Parsing
             print("\n[Stage 1/5] Log Parsing with Drain Algorithm")
             print("-"*80)
-            templates_df, event_mapping, parsed_logs = self._stage_parsing()
+            templates_df, event_mapping, parsed_logs, structured_csv = self._stage_parsing()
             
             # Stage 2: Embedding Generation
             print("\n[Stage 2/5] GPU-Accelerated Embedding Generation")
@@ -72,7 +72,7 @@ class PreprocessingPipeline:
             # Stage 4: Sequence Generation
             print("\n[Stage 4/5] EventSequence Generation")
             print("-"*80)
-            sequences_df = self._stage_sequence_generation(event_mapping, component_ids)
+            sequences_df = self._stage_sequence_generation(event_mapping, component_ids, structured_csv)
             
             # Stage 5: Data Splitting
             print("\n[Stage 5/5] Data Splitting")
@@ -118,6 +118,9 @@ class PreprocessingPipeline:
         # Load parsed logs for component extraction
         parsed_logs = parser._load_jsonl(input_path, progress_bar=False)
         
+        # Get structured CSV path
+        structured_csv = os.path.join(output_dir, "temp_logs.csv_structured.csv")
+        
         self.stats['parsing_time'] = time.time() - start_time
         self.stats['num_logs'] = len(event_mapping)
         self.stats['num_templates'] = len(templates_df)
@@ -125,7 +128,7 @@ class PreprocessingPipeline:
         print(f"✓ Parsed {self.stats['num_logs']} logs into {self.stats['num_templates']} templates")
         print(f"  Time: {self.stats['parsing_time']:.2f}s")
         
-        return templates_df, event_mapping, parsed_logs
+        return templates_df, event_mapping, parsed_logs, structured_csv
     
     def _stage_embedding(self, templates_df):
         """Stage 2: Generate embeddings with GPU"""
@@ -189,7 +192,7 @@ class PreprocessingPipeline:
         
         return component_ids, component_map
     
-    def _stage_sequence_generation(self, event_mapping, component_ids):
+    def _stage_sequence_generation(self, event_mapping, component_ids, structured_csv):
         """Stage 4: Generate EventSequences"""
         start_time = time.time()
         
@@ -200,12 +203,11 @@ class PreprocessingPipeline:
             write_interval=self.config.get('sequence.write_interval', 50000)
         )
         
-        input_path = self.config.get('input.raw_log_path')
         output_dir = self.config.get('input.output_dir')
         sequences_path = os.path.join(output_dir, "sequences.csv")
         
         sequences_df = generator.generate_sequences(
-            input_path, event_mapping, component_ids, sequences_path
+            structured_csv, event_mapping, component_ids, sequences_path
         )
         
         self.stats['sequence_time'] = time.time() - start_time
