@@ -87,6 +87,31 @@ class DrainParser:
         templates_path = os.path.join(output_dir, "temp_logs_templates.csv")
         structured_path = os.path.join(output_dir, "temp_logs_structured.csv")
         
+        # Check if files were created
+        if not os.path.exists(templates_path):
+            # List files in output_dir to debug
+            print(f"Error: {templates_path} not found!")
+            print(f"Files in {output_dir}:")
+            for f in os.listdir(output_dir):
+                print(f"  - {f}")
+            
+            # Try alternative naming (some Drain versions use different names)
+            alt_templates = os.path.join(output_dir, "temp_logs.log_templates.csv")
+            if os.path.exists(alt_templates):
+                print(f"Found alternative: {alt_templates}")
+                templates_path = alt_templates
+            else:
+                raise FileNotFoundError(f"Drain parser did not create templates file. Expected: {templates_path}")
+        
+        if not os.path.exists(structured_path):
+            print(f"Warning: {structured_path} not found!")
+            alt_structured = os.path.join(output_dir, "temp_logs.log_structured.csv")
+            if os.path.exists(alt_structured):
+                print(f"Found alternative: {alt_structured}")
+                structured_path = alt_structured
+            else:
+                raise FileNotFoundError(f"Drain parser did not create structured file. Expected: {structured_path}")
+        
         self.templates_df = pd.read_csv(templates_path)
         structured_df = pd.read_csv(structured_path)
         
