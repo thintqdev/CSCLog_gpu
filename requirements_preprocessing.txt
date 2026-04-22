@@ -1,0 +1,14 @@
+# CSCLog Preprocessing Pipeline Dependencies
+# Optimized for Tesla V100 with CUDA support
+
+torch>=1.12.0
+transformers>=4.20.0
+pandas>=1.4.0
+numpy>=1.22.0
+pyyaml>=6.0
+tqdm>=4.64.0
+scikit-learn>=1.1.0
+python-dateutil>=2.8.0
+
+# Optional but recommended for performance
+accelerate>=0.20.0  # For better GPU utilization

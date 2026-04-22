@@ -1,0 +1,46 @@
+# CSCLog Preprocessing Pipeline Configuration
+# Optimized for Tesla V100 16GB with 4M records
+
+input:
+  raw_log_path: "dataset/data_full.jsonl"
+  output_dir: "dataset/processed"
+
+parsing:
+  depth: 4  # Drain tree depth
+  similarity_threshold: 0.4
+  max_children: 100
+  chunk_size: 500000  # Process 500K logs at a time
+
+embedding:
+  model_name: "model/bert"  # Local BERT model path
+  batch_size: 128  # Optimized for V100 16GB
+  max_batch_size: 256  # V100 can handle larger batches
+  device: "cuda"
+  max_length: 512
+  use_fp16: true  # Enable mixed precision for V100 Tensor Cores
+  use_tf32: true  # Additional speedup on V100
+  pin_memory: true  # Faster CPU-GPU transfers
+
+sequence:
+  window_size: 9
+  session_type: "sliding"  # or "time_window"
+  time_window_seconds: 10
+  write_interval: 50000  # Write every 50K sequences for 4M records
+
+splitting:
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_seed: 42
+
+monitoring:
+  enable_gpu_monitor: true
+  enable_progress_bar: true
+  log_interval_seconds: 5
+  memory_warning_threshold: 0.8  # Warn at 80% memory usage
+
+performance:
+  num_workers: 4  # CPU workers for parallel processing
+  prefetch_factor: 2  # Prefetch batches for GPU
+  chunk_size_mb: 500  # Read 500MB chunks for 4M records
+  gc_interval: 100000  # Trigger GC every 100K records

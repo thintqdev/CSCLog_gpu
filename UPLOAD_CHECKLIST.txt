@@ -1,0 +1,182 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                                                                           ║
+║   CSCLog Preprocessing Pipeline - Upload Checklist                       ║
+║   Checklist này để đảm bảo upload đầy đủ lên server                     ║
+║                                                                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+TRƯỚC KHI UPLOAD
+═══════════════════════════════════════════════════════════════════════════
+
+□ Chạy validate_setup.py → Tất cả checks PASS
+□ Chạy package_for_server.py → Tạo csclog_preprocessing.zip
+□ Kiểm tra file zip size (~200-500MB)
+□ Backup code hiện tại (git commit hoặc copy)
+
+FILES CẦN UPLOAD
+═══════════════════════════════════════════════════════════════════════════
+
+OPTION 1: Upload zip (Recommended)
+□ csclog_preprocessing.zip (~200-500MB)
+□ dataset/data_full.jsonl (~XXX MB) - Upload riêng nếu lớn
+
+OPTION 2: Upload từng file/folder
+Core Code:
+□ preprocessing/ (toàn bộ folder)
+  □ __init__.py
+  □ config_manager.py
+  □ pipeline.py
+  □ drain_parser.py
+  □ embedding_generator.py
+  □ component_extractor.py
+  □ sequence_generator.py
+  □ data_splitter.py
+
+□ utils/Drain.py
+□ utils/__init__.py
+
+□ model/bert/ (toàn bộ folder)
+  □ config.json
+  □ vocab.txt
+  □ tokenizer.json
+  □ tokenizer_config.json
+  □ pytorch_model.bin (nếu có)
+
+Scripts:
+□ run_preprocessing.py
+□ test_server_setup.py
+□ setup_server.sh
+□ validate_setup.py (optional, để debug)
+
+Config & Docs:
+□ config.yaml
+□ requirements_preprocessing.txt
+□ PREPROCESSING_README.md
+□ SERVER_DEPLOYMENT_GUIDE.md
+□ QUICK_START.md
+
+Data:
+□ dataset/data_full.jsonl
+
+UPLOAD COMMANDS
+═══════════════════════════════════════════════════════════════════════════
+
+SCP (Recommended):
+□ scp csclog_preprocessing.zip user@server:/path/to/destination/
+□ scp dataset/data_full.jsonl user@server:/path/to/destination/dataset/
+
+SFTP:
+□ sftp user@server
+□ put csclog_preprocessing.zip
+□ put dataset/data_full.jsonl
+
+RSYNC (Alternative):
+□ rsync -avz --progress csclog_preprocessing.zip user@server:/path/
+□ rsync -avz --progress dataset/data_full.jsonl user@server:/path/dataset/
+
+TRÊN SERVER - SETUP
+═══════════════════════════════════════════════════════════════════════════
+
+□ SSH vào server: ssh user@server
+□ Navigate to directory: cd /path/to/destination
+□ Extract zip: unzip csclog_preprocessing.zip
+□ Check files: ls -la
+□ Make setup script executable: chmod +x setup_server.sh
+□ Run setup: ./setup_server.sh
+□ Activate venv: source venv/bin/activate
+
+TRÊN SERVER - VALIDATION
+═══════════════════════════════════════════════════════════════════════════
+
+□ Check GPU: nvidia-smi
+□ Test setup: python test_server_setup.py → All tests PASS
+□ Dry run: python run_preprocessing.py --dry-run → Config valid
+□ Check data exists: ls -lh dataset/data_full.jsonl
+
+TRÊN SERVER - RUN PREPROCESSING
+═══════════════════════════════════════════════════════════════════════════
+
+□ Start tmux/screen: tmux new -s preprocessing
+□ Run: python run_preprocessing.py
+□ Detach: Ctrl+B then D (tmux) hoặc Ctrl+A then D (screen)
+□ Monitor GPU (terminal khác): watch -n 1 nvidia-smi
+
+VERIFY OUTPUTS
+═══════════════════════════════════════════════════════════════════════════
+
+□ Check output directory: ls -lh dataset/processed/
+□ Verify 7 files created:
+  □ log_templates.csv
+  □ sentences_emb.json
+  □ component.json
+  □ train_normal.csv
+  □ val_normal.csv (hoặc test_normal.csv)
+  □ val_anomaly.csv (hoặc test_anomaly.csv)
+  □ preprocessing_report.json
+
+□ Review report: cat dataset/processed/preprocessing_report.json
+□ Check file sizes reasonable (not 0 bytes)
+
+INTEGRATION WITH CSCLOG
+═══════════════════════════════════════════════════════════════════════════
+
+□ Update main.ipynb với paths mới:
+  name = 'dataset/processed'
+  train_path = name + '/train_normal.csv'
+  ...
+
+□ Test load data trong notebook
+□ Verify data shapes correct
+□ Run training
+
+TROUBLESHOOTING CHECKLIST
+═══════════════════════════════════════════════════════════════════════════
+
+Nếu gặp lỗi:
+□ Check preprocessing_report.json
+□ Run python test_server_setup.py
+□ Check GPU: nvidia-smi
+□ Check logs với --verbose
+□ Review SERVER_DEPLOYMENT_GUIDE.md
+
+Common Issues:
+□ GPU OOM → Giảm batch_size trong config.yaml
+□ CUDA not found → Check nvidia-smi, reinstall PyTorch
+□ Slow → Check GPU utilization, tăng batch_size
+□ Process killed → Check RAM, giảm chunk_size
+
+EXPECTED RESULTS
+═══════════════════════════════════════════════════════════════════════════
+
+Performance (V100 16GB, 4M records):
+□ Total time: 3-5 minutes
+□ Throughput: ~15,000-20,000 logs/second
+□ GPU memory: 8-12GB / 16GB
+□ Output size: ~1.1GB
+
+Success Indicators:
+□ All 5 stages complete
+□ 7 output files generated
+□ preprocessing_report.json has full stats
+□ No errors in output
+□ CSCLog training can load data
+
+FINAL CHECKLIST
+═══════════════════════════════════════════════════════════════════════════
+
+□ Code uploaded to server
+□ Setup completed successfully
+□ Tests passed
+□ Preprocessing ran successfully
+□ Outputs verified
+□ Ready for CSCLog training
+
+═══════════════════════════════════════════════════════════════════════════
+
+Notes:
+- Estimated upload time: 5-10 minutes (depending on connection)
+- Estimated setup time: 5-10 minutes
+- Estimated preprocessing time: 3-5 minutes (4M records, V100)
+- Total time: ~15-25 minutes from start to finish
+
+Good luck! 🚀
