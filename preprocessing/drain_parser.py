@@ -125,6 +125,7 @@ class DrainParser:
                 try:
                     # Parse JSONL line
                     # Format: app.kolla: [timestamp, {log_data}]
+                    # Format: remote.*: [timestamp, {log_data}]
                     line = line.strip()
                     if not line:
                         continue
@@ -133,17 +134,36 @@ class DrainParser:
                     if ':' in line:
                         parts = line.split(':', 1)
                         if len(parts) == 2:
+                            prefix = parts[0].strip()  # app.kolla or remote.*
                             json_part = parts[1].strip()
+                            
                             # Parse the array [timestamp, {data}]
                             data = json.loads(json_part)
                             if isinstance(data, list) and len(data) >= 2:
                                 log_data = data[1]
                                 
-                                # Extract fields
+                                # Extract fields with fallbacks
                                 timestamp = log_data.get('timestamp', '')
                                 level = log_data.get('level', 'INFO')
-                                component = log_data.get('service', log_data.get('host', 'unknown'))
+                                
+                                # Component priority: service > host > prefix > unknown
+                                component = log_data.get('service')
+                                if not component:
+                                    component = log_data.get('host')
+                                if not component:
+                                    # Use prefix as component (app.kolla -> kolla, remote.* -> remote)
+                                    if '.' in prefix:
+                                        component = prefix.split('.', 1)[1] if len(prefix.split('.')) > 1 else prefix
+                                    else:
+                                        component = prefix
+                                if not component:
+                                    component = 'unknown'
+                                
                                 message = log_data.get('message', '')
+                                
+                                # Skip empty messages
+                                if not message:
+                                    continue
                                 
                                 logs.append({
                                     'Timestamp': timestamp,
@@ -153,12 +173,16 @@ class DrainParser:
                                 })
                 
                 except json.JSONDecodeError as e:
-                    print(f"Warning: Skipping malformed JSON at line {line_num + 1}: {e}")
+                    # Only print first few errors to avoid spam
+                    if line_num < 10:
+                        print(f"Warning: Skipping malformed JSON at line {line_num + 1}: {e}")
                     continue
                 except Exception as e:
-                    print(f"Warning: Error processing line {line_num + 1}: {e}")
+                    if line_num < 10:
+                        print(f"Warning: Error processing line {line_num + 1}: {e}")
                     continue
         
+        print(f"Loaded {len(logs)} valid log entries from {total_lines} lines")
         return logs
     
     def save_templates(self, output_path: str):

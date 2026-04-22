@@ -94,6 +94,8 @@ class SequenceGenerator:
                         continue
                     
                     # Parse JSONL
+                    # Format: app.kolla: [timestamp, {log_data}]
+                    # Format: remote.*: [timestamp, {log_data}]
                     if ':' in line:
                         parts = line.split(':', 1)
                         if len(parts) == 2:
@@ -103,11 +105,22 @@ class SequenceGenerator:
                                 log_data = data[1]
                                 timestamp = log_data.get('timestamp', '')
                                 
+                                # Skip if no timestamp
+                                if not timestamp:
+                                    continue
+                                
                                 # Get EventId and ComponentId
                                 if idx in event_mapping:
                                     event_id = event_mapping[idx]
                                     component_id = component_ids[idx] if idx < len(component_ids) else -1
                                     
+                                    logs.append((event_id, component_id, timestamp))
+                
+                except Exception as e:
+                    continue
+        
+        print(f"Loaded {len(logs)} log entries with metadata")
+        return logs
                                     logs.append((event_id, component_id, timestamp))
                 
                 except Exception as e:
