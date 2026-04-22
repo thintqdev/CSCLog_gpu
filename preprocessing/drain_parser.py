@@ -120,7 +120,7 @@ class DrainParser:
             total_lines = sum(1 for _ in f)
         
         with open(jsonl_path, 'r', encoding='utf-8') as f:
-            iterator = tqdm(f, total=total_lines, desc="Loading logs") if progress_bar else f
+            iterator = tqdm(f, total=total_lines, desc="Loading logs", disable=False) if progress_bar else f
             
             for line_num, line in enumerate(iterator):
                 try:
@@ -130,6 +130,10 @@ class DrainParser:
                     line = line.strip()
                     if not line:
                         continue
+                    
+                    # Debug first 3 lines (will show even with tqdm)
+                    if line_num < 3:
+                        tqdm.write(f"Debug line {line_num}: Processing...")
                     
                     # Split by first colon to get prefix and data
                     if ':' in line:
@@ -162,12 +166,14 @@ class DrainParser:
                                 
                                 message = log_data.get('message', '')
                                 
-                                # Debug: print first few to see what we get
+                                # Debug first few entries
                                 if line_num < 3:
-                                    print(f"Debug line {line_num}: timestamp={timestamp}, component={component}, message={message[:50] if message else 'EMPTY'}")
+                                    tqdm.write(f"  timestamp={timestamp}, component={component}, message={message[:30]}")
                                 
                                 # Skip empty messages
                                 if not message or not timestamp:
+                                    if line_num < 3:
+                                        tqdm.write(f"  SKIPPED: empty message or timestamp")
                                     continue
                                 
                                 logs.append({
@@ -176,15 +182,18 @@ class DrainParser:
                                     'Component': component,
                                     'Content': message
                                 })
+                                
+                                if line_num < 3:
+                                    tqdm.write(f"  ✓ Added to logs (total: {len(logs)})")
                 
                 except json.JSONDecodeError as e:
                     # Only print first few errors to avoid spam
                     if line_num < 10:
-                        print(f"Warning: Skipping malformed JSON at line {line_num + 1}: {e}")
+                        tqdm.write(f"Warning: Skipping malformed JSON at line {line_num + 1}: {e}")
                     continue
                 except Exception as e:
                     if line_num < 10:
-                        print(f"Warning: Error processing line {line_num + 1}: {e}")
+                        tqdm.write(f"Warning: Error processing line {line_num + 1}: {e}")
                     continue
         
         print(f"Loaded {len(logs)} valid log entries from {total_lines} lines")
