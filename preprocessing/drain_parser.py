@@ -105,6 +105,9 @@ class DrainParser:
     def _load_jsonl(self, jsonl_path: str, progress_bar: bool = True) -> List[Dict]:
         """
         Load JSONL file and extract log messages
+        Supports 2 formats:
+        1. app.kolla: [timestamp, {log_data}]
+        2. {"message": "...", "module": "...", "@timestamp": "..."}
         
         Args:
             jsonl_path: Path to JSONL file
@@ -124,79 +127,76 @@ class DrainParser:
             
             for line_num, line in enumerate(iterator):
                 try:
-                    # Parse JSONL line
-                    # Format: app.kolla: [timestamp, {log_data}]
-                    # Format: remote.*: [timestamp, {log_data}]
                     line = line.strip()
                     if not line:
                         continue
                     
-                    # Debug first 3 lines (will show even with tqdm)
+                    # Debug first 3 lines
                     if line_num < 3:
-                        tqdm.write(f"Debug line {line_num}: Processing...")
+                        tqdm.write(f"Debug line {line_num}: {line[:80]}...")
                     
-                    # Split by first colon to get prefix and data
-                    if ':' in line:
+                    # Try to detect format
+                    # Format 1: prefix: [timestamp, {data}]
+                    if ':' in line and line.startswith(('app.', 'remote.')):
                         parts = line.split(':', 1)
                         if len(parts) == 2:
-                            prefix = parts[0].strip()  # app.kolla or remote.*
+                            prefix = parts[0].strip()
                             json_part = parts[1].strip()
                             
-                            # Parse the array [timestamp, {data}]
                             data = json.loads(json_part)
                             if isinstance(data, list) and len(data) >= 2:
                                 log_data = data[1]
                                 
-                                # Extract fields with fallbacks
                                 timestamp = log_data.get('timestamp', '')
                                 level = log_data.get('level', 'INFO')
-                                
-                                # Component priority: service > host > prefix > unknown
-                                component = log_data.get('service')
-                                if not component:
-                                    component = log_data.get('host')
-                                if not component:
-                                    # Use prefix as component (app.kolla -> kolla, remote.* -> remote)
-                                    if '.' in prefix:
-                                        component = prefix.split('.', 1)[1] if len(prefix.split('.')) > 1 else prefix
-                                    else:
-                                        component = prefix
-                                if not component:
-                                    component = 'unknown'
-                                
+                                component = log_data.get('service', log_data.get('host', 'unknown'))
                                 message = log_data.get('message', '')
                                 
-                                # Debug first few entries
                                 if line_num < 3:
-                                    tqdm.write(f"  timestamp={timestamp}, component={component}, message={message[:30]}")
+                                    tqdm.write(f"  Format 1: timestamp={timestamp}, component={component}")
                                 
-                                # Skip empty messages
-                                if not message or not timestamp:
-                                    if line_num < 3:
-                                        tqdm.write(f"  SKIPPED: empty message or timestamp")
-                                    continue
-                                
-                                logs.append({
-                                    'Timestamp': timestamp,
-                                    'Level': level,
-                                    'Component': component,
-                                    'Content': message
-                                })
-                                
-                                if line_num < 3:
-                                    tqdm.write(f"  ✓ Added to logs (total: {len(logs)})")
+                                if message and timestamp:
+                                    logs.append({
+                                        'Timestamp': timestamp,
+                                        'Level': level,
+                                        'Component': component,
+                                        'Content': message
+                                    })
+                    
+                    # Format 2: {"message": "...", "module": "...", "@timestamp": "..."}
+                    else:
+                        log_data = json.loads(line)
+                        
+                        # Extract fields
+                        message = log_data.get('message', '')
+                        timestamp = log_data.get('@timestamp', log_data.get('timestamp', ''))
+                        level = log_data.get('level', log_data.get('severity', 'INFO'))
+                        component = log_data.get('module', log_data.get('service', log_data.get('host', 'unknown')))
+                        
+                        if line_num < 3:
+                            tqdm.write(f"  Format 2: timestamp={timestamp}, component={component}, message={message[:30]}")
+                        
+                        if message and timestamp:
+                            logs.append({
+                                'Timestamp': timestamp,
+                                'Level': level,
+                                'Component': component,
+                                'Content': message
+                            })
+                    
+                    if line_num < 3:
+                        tqdm.write(f"  ✓ Total logs: {len(logs)}")
                 
                 except json.JSONDecodeError as e:
-                    # Only print first few errors to avoid spam
                     if line_num < 10:
-                        tqdm.write(f"Warning: Skipping malformed JSON at line {line_num + 1}: {e}")
+                        tqdm.write(f"Warning line {line_num}: JSON error: {e}")
                     continue
                 except Exception as e:
                     if line_num < 10:
-                        tqdm.write(f"Warning: Error processing line {line_num + 1}: {e}")
+                        tqdm.write(f"Warning line {line_num}: {type(e).__name__}: {e}")
                     continue
         
-        print(f"Loaded {len(logs)} valid log entries from {total_lines} lines")
+        print(f"\nLoaded {len(logs)} valid log entries from {total_lines} lines")
         return logs
     
     def save_templates(self, output_path: str):
