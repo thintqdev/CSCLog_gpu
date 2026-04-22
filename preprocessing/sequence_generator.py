@@ -121,12 +121,6 @@ class SequenceGenerator:
         
         print(f"Loaded {len(logs)} log entries with metadata")
         return logs
-                                    logs.append((event_id, component_id, timestamp))
-                
-                except Exception as e:
-                    continue
-        
-        return logs
     
     def _sliding_window(self, events: List[Tuple], progress_bar: bool = True) -> List[List]:
         """
