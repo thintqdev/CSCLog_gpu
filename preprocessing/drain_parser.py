@@ -73,6 +73,7 @@ class DrainParser:
             depth=self.depth,
             st=self.st,
             maxChild=self.max_children,
+            keep_para=False,  # Disable ParameterList to avoid DataFrame error
             rex=[
                 r'(\d+\.){3}\d+',  # IP addresses
                 r'\d{2}:\d{2}:\d{2}',  # Time
@@ -161,8 +162,12 @@ class DrainParser:
                                 
                                 message = log_data.get('message', '')
                                 
+                                # Debug: print first few to see what we get
+                                if line_num < 3:
+                                    print(f"Debug line {line_num}: timestamp={timestamp}, component={component}, message={message[:50] if message else 'EMPTY'}")
+                                
                                 # Skip empty messages
-                                if not message:
+                                if not message or not timestamp:
                                     continue
                                 
                                 logs.append({
