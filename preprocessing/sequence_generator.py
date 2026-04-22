@@ -86,9 +86,12 @@ class SequenceGenerator:
         logs = []
         
         print(f"Loading structured logs from {structured_csv}...")
-        structured_df = pd.read_csv(structured_csv)
+        
+        # Read CSV with proper handling of quoted fields
+        structured_df = pd.read_csv(structured_csv, quoting=1)  # QUOTE_ALL
         
         print(f"Structured CSV has {len(structured_df)} rows")
+        print(f"Columns: {structured_df.columns.tolist()}")
         print(f"Event mapping has {len(event_mapping)} entries")
         print(f"Component IDs has {len(component_ids)} entries")
         
@@ -101,8 +104,15 @@ class SequenceGenerator:
                 if not event_id or pd.isna(event_id):
                     continue
                 
-                # Get timestamp
+                # Get timestamp - it's in the Timestamp column
                 timestamp = row.get('Timestamp', '')
+                
+                # If timestamp is malformed (contains commas), try to extract just the ISO timestamp part
+                if isinstance(timestamp, str) and ',' in timestamp:
+                    # Format: "2026-04-20T17:07:06.472+09:00,ERROR,cinder,..."
+                    # Extract just the timestamp part before first comma
+                    timestamp = timestamp.split(',')[0]
+                
                 if not timestamp or pd.isna(timestamp):
                     continue
                 
