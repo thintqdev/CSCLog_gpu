@@ -281,8 +281,15 @@ def generate_train(name, train_path, logTemp_path, encoder_path, com_path, windo
     for idx, row in tqdm(train_datas.iterrows(), total=len(train_datas), desc="Processing training data"):
         seqs = eval(row['EventSequence'])
         len_seq = len(seqs)
-        inputs.extend([seqs[i:i + window_size] for i in range(len_seq - window_size)])
-        outputs.extend([mapping[seqs[i + window_size][0]] for i in range(len_seq - window_size)])
+        # Need at least window_size + 1 events to create input/output pairs
+        if len_seq > window_size:
+            inputs.extend([seqs[i:i + window_size] for i in range(len_seq - window_size)])
+            outputs.extend([mapping[seqs[i + window_size][0]] for i in range(len_seq - window_size)])
+        # If sequence length equals window_size, use the whole sequence as input
+        # and predict the last event (self-prediction for training)
+        elif len_seq == window_size:
+            inputs.append(seqs)
+            outputs.append(mapping[seqs[-1][0]])
     
     inputs_encoded, coms_encoded, quans_encoded, time_encoded = [], [], [], []
     for idx, events in enumerate(tqdm(inputs, desc="Encoding sequences")):
