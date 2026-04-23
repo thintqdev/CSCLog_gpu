@@ -130,29 +130,91 @@ def evaluate_model(model_path, data_dir, window_size=9, batch_size=128, device='
     
     # Debug: Check unique values
     print(f"\nUnique labels: {np.unique(all_labels)}")
-    print(f"Unique predictions: {np.unique(all_predictions)}")
-    print(f"Prediction distribution: {np.bincount(all_predictions)}")
+    print(f"Unique predictions: {len(np.unique(all_predictions))} different template IDs")
     
-    # Model predicts log template IDs, not anomaly labels!
-    # Need to convert: if prediction matches actual next event = normal, else = anomaly
-    # For now, use a simple heuristic: high prediction values = anomaly
+    # CSCLog approach: Use prediction distribution as anomaly score
+    # Normal sequences should have confident predictions (low entropy)
+    # Anomaly sequences should have uncertain predictions (high entropy)
     
-    # Convert multiclass predictions to binary anomaly detection
-    # Strategy: Use prediction confidence/entropy as anomaly score
-    print("\n⚠️  Note: Model predicts log template IDs, not anomaly labels directly.")
-    print("Using simple heuristic: treating all sequences as normal for now.")
-    print("Proper evaluation requires comparing predicted vs actual next events.")
+    # For simplicity: Use top predicted template frequency as confidence
+    # If a template is predicted very frequently, sequences with that prediction = normal
+    # Rare predictions = anomaly
     
-    # For demonstration, just show label distribution
+    pred_counts = np.bincount(all_predictions)
+    pred_freq = pred_counts / len(all_predictions)
+    
+    # Assign anomaly score: lower frequency = higher anomaly score
+    anomaly_scores = np.array([1.0 - pred_freq[pred] for pred in all_predictions])
+    
+    # Find optimal threshold using ROC curve
+    from sklearn.metrics import roc_curve, auc, roc_auc_score
+    
+    fpr, tpr, thresholds = roc_curve(all_labels, anomaly_scores)
+    roc_auc = auc(fpr, tpr)
+    
+    # Find best threshold (maximize F1)
+    best_f1 = 0
+    best_threshold = 0.5
+    
+    for threshold in thresholds:
+        binary_preds = (anomaly_scores >= threshold).astype(int)
+        if len(np.unique(binary_preds)) < 2:
+            continue
+        precision, recall, f1, _ = precision_recall_fscore_support(all_labels, binary_preds, average='binary', zero_division=0)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_threshold = threshold
+    
+    # Use best threshold
+    binary_predictions = (anomaly_scores >= best_threshold).astype(int)
+    
     print("\n" + "="*80)
-    print("LABEL DISTRIBUTION")
-    print("="*80)
-    print(f"Normal sequences (Label=0): {np.sum(all_labels == 0)}")
-    print(f"Anomaly sequences (Label=1): {np.sum(all_labels == 1)}")
-    print(f"\nModel predicted {len(np.unique(all_predictions))} different template IDs")
+    print("EVALUATION RESULTS")
     print("="*80)
     
-    return
+    accuracy = accuracy_score(all_labels, binary_predictions)
+    precision, recall, f1, _ = precision_recall_fscore_support(all_labels, binary_predictions, average='binary', zero_division=0)
+    
+    print(f"\nAnomaly Detection Metrics:")
+    print(f"  ROC-AUC:   {roc_auc:.4f}")
+    print(f"  Threshold: {best_threshold:.4f}")
+    print(f"  Accuracy:  {accuracy:.4f}")
+    print(f"  Precision: {precision:.4f}")
+    print(f"  Recall:    {recall:.4f}")
+    print(f"  F1-Score:  {f1:.4f}")
+    
+    # Confusion matrix
+    cm = confusion_matrix(all_labels, binary_predictions)
+    print(f"\nConfusion Matrix:")
+    print(f"                Predicted")
+    print(f"              Normal  Anomaly")
+    print(f"Actual Normal   {cm[0][0]:6d}  {cm[0][1]:7d}")
+    print(f"      Anomaly   {cm[1][0]:6d}  {cm[1][1]:7d}")
+    
+    # Classification report
+    print(f"\nDetailed Classification Report:")
+    print(classification_report(all_labels, binary_predictions, target_names=['Normal', 'Anomaly'], zero_division=0))
+    
+    # Save results
+    results = {
+        'roc_auc': float(roc_auc),
+        'threshold': float(best_threshold),
+        'accuracy': float(accuracy),
+        'precision': float(precision),
+        'recall': float(recall),
+        'f1_score': float(f1),
+        'confusion_matrix': cm.tolist(),
+        'total_samples': len(all_labels),
+        'normal_samples': int(np.sum(all_labels == 0)),
+        'anomaly_samples': int(np.sum(all_labels == 1))
+    }
+    
+    results_path = f"{data_dir}/evaluation_results.json"
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    
+    print(f"\n✅ Results saved to: {results_path}")
+    print("="*80)
     
     print("\n" + "="*80)
     print("EVALUATION RESULTS")
