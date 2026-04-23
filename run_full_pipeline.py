@@ -114,7 +114,7 @@ Examples:
     
     # Step 2: Training
     if not args.skip_training:
-        print("\n🚀 Step 2/2: Model Training")
+        print("\n🚀 Step 2/3: Model Training")
         
         # Check if preprocessed data exists
         required_files = [
@@ -146,6 +146,25 @@ Examples:
     else:
         print("\n⏭️  Skipping training (--skip-training)")
     
+    # Step 3: Evaluation
+    if not args.skip_training:
+        print("\n📊 Step 3/3: Model Evaluation")
+        
+        model_path = os.path.join(args.model_dir, 'CSCLog.pt')
+        if not os.path.exists(model_path):
+            print(f"\n⚠️  Warning: Model not found at {model_path}")
+            print("Skipping evaluation...")
+        else:
+            cmd = (f"python evaluate.py "
+                   f"--model_path {model_path} "
+                   f"--data_dir {args.data_dir} "
+                   f"--window_size {args.window_size}")
+            
+            if not run_command(cmd, "Model Evaluation"):
+                print("\n⚠️  Evaluation failed, but training completed successfully")
+    else:
+        print("\n⏭️  Skipping evaluation (--skip-training)")
+    
     # Summary
     total_time = time.time() - start_time
     
@@ -165,6 +184,7 @@ Examples:
     
     if not args.skip_training:
         print(f"\n🤖 Trained model: {args.model_dir}/CSCLog.pt")
+        print(f"📊 Evaluation results: {args.data_dir}/evaluation_results.json")
     
     print("\n" + "="*80)
     
