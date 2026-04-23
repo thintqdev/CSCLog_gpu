@@ -526,7 +526,15 @@ def main():
     train_dataset, attr_num, class_num, com_num = generate_train(
         'train', train_path, temp_path, emb_path, com_path, window_size
     )
-    dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=False)
+    # Optimize DataLoader with num_workers and pin_memory
+    dataloader = DataLoader(
+        train_dataset, 
+        batch_size=batch_size, 
+        shuffle=True, 
+        pin_memory=True,  # Faster CPU->GPU transfer
+        num_workers=4,     # Parallel data loading
+        persistent_workers=True  # Keep workers alive between epochs
+    )
     
     print("\nLoading test data...")
     # Load test_normal which may contain both normal and anomaly sequences
