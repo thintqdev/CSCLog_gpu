@@ -30,12 +30,26 @@ def evaluate_model(model_path, data_dir, window_size=9, device='cuda'):
     
     # Load test data
     test_path = f"{data_dir}/test_normal.csv"
+    test_anomaly_path = f"{data_dir}/test_anomaly.csv"
     temp_path = f"{data_dir}/log_templates.csv"
     emb_path = f"{data_dir}/sentences_emb.json"
     com_path = f"{data_dir}/component.json"
     
     print("\nLoading test data...")
-    test_df = pd.read_csv(test_path)
+    
+    # Load both normal and anomaly test sets
+    test_normal_df = pd.read_csv(test_path)
+    
+    if os.path.exists(test_anomaly_path):
+        test_anomaly_df = pd.read_csv(test_anomaly_path)
+        # Combine both
+        test_df = pd.concat([test_normal_df, test_anomaly_df], ignore_index=True)
+        print(f"Loaded test_normal.csv: {len(test_normal_df)} sequences")
+        print(f"Loaded test_anomaly.csv: {len(test_anomaly_df)} sequences")
+    else:
+        test_df = test_normal_df
+        print(f"Loaded test_normal.csv only: {len(test_normal_df)} sequences")
+    
     print(f"Total test sequences: {len(test_df)}")
     print(f"Normal sequences (Label=0): {len(test_df[test_df['Label']==0])}")
     print(f"Anomaly sequences (Label=1): {len(test_df[test_df['Label']==1])}")
@@ -44,6 +58,10 @@ def evaluate_model(model_path, data_dir, window_size=9, device='cuda'):
         print("\n⚠️  Warning: No anomaly sequences found in test set!")
         print("Cannot evaluate anomaly detection performance.")
         return
+    
+    # Save combined test set temporarily
+    combined_test_path = f"{data_dir}/test_combined.csv"
+    test_df.to_csv(combined_test_path, index=False)
     
     # Load model metadata
     logTemp = pd.read_csv(temp_path, index_col='EventId')
@@ -70,7 +88,7 @@ def evaluate_model(model_path, data_dir, window_size=9, device='cuda'):
     
     # Generate predictions
     print("\nGenerating predictions...")
-    test_loader, _, _ = generate_pre('test', test_path, temp_path, emb_path, com_path, window_size)
+    test_loader, _, _ = generate_pre('test', combined_test_path, temp_path, emb_path, com_path, window_size)
     
     all_predictions = []
     all_labels = []
