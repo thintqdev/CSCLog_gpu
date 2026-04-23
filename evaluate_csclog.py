@@ -95,8 +95,13 @@ def evaluate_model(model_path, data_dir, window_size=9, device='cuda'):
     all_labels = []
     all_probs = []
     
+    print(f"Test loader type: {type(test_loader)}")
+    print(f"Test loader length: {len(test_loader) if hasattr(test_loader, '__len__') else 'N/A'}")
+    
+    batch_count = 0
     with torch.no_grad():
         for seq, com, quan, timp, label in test_loader:
+            batch_count += 1
             seq = seq.to(device)
             com = com.to(device)
             quan = quan.to(device)
@@ -109,6 +114,17 @@ def evaluate_model(model_path, data_dir, window_size=9, device='cuda'):
             all_predictions.extend(predicted.cpu().numpy())
             all_labels.extend(label.numpy())
             all_probs.extend(probs.cpu().numpy())
+            
+            if batch_count % 100 == 0:
+                print(f"Processed {batch_count} batches, {len(all_predictions)} samples...")
+    
+    print(f"Total batches processed: {batch_count}")
+    print(f"Total predictions: {len(all_predictions)}")
+    
+    if len(all_predictions) == 0:
+        print("\n❌ Error: No predictions generated!")
+        print("Test loader might be empty or generate_pre failed.")
+        return
     
     all_predictions = np.array(all_predictions)
     all_labels = np.array(all_labels)
