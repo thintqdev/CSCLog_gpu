@@ -268,7 +268,7 @@ def getDateTimeFromISO8601String(s):
 
 
 def generate_train(name, train_path, logTemp_path, encoder_path, com_path, window_size):
-    """Generate training dataset"""
+    """Generate training dataset with memory-efficient processing"""
     print(f"Loading training data from {train_path}...")
     train_datas = pd.read_csv(train_path, engine='c', na_filter=False, memory_map=True)
     logTemp = pd.read_csv(logTemp_path, index_col='EventId', engine='c', na_filter=False, memory_map=True)
@@ -277,51 +277,86 @@ def generate_train(name, train_path, logTemp_path, encoder_path, com_path, windo
     cop = json.load(open(com_path, 'r'))
     num_keys = len(logTemp.index.unique())
     
-    inputs, outputs = [], []
-    for idx, row in tqdm(train_datas.iterrows(), total=len(train_datas), desc="Processing training data"):
-        seqs = eval(row['EventSequence'])
-        len_seq = len(seqs)
-        # Need at least window_size + 1 events to create input/output pairs
-        if len_seq > window_size:
-            inputs.extend([seqs[i:i + window_size] for i in range(len_seq - window_size)])
-            outputs.extend([mapping[seqs[i + window_size][0]] for i in range(len_seq - window_size)])
-        # If sequence length equals window_size, use the whole sequence as input
-        # and predict the last event (self-prediction for training)
-        elif len_seq == window_size:
-            inputs.append(seqs)
-            outputs.append(mapping[seqs[-1][0]])
+    # Process in chunks to avoid memory issues
+    chunk_size = 100000  # Process 100K sequences at a time
+    all_tensors = []
+    total_samples = 0
+    attr_num = None
     
-    inputs_encoded, coms_encoded, quans_encoded, time_encoded = [], [], [], []
-    for idx, events in enumerate(tqdm(inputs, desc="Encoding sequences")):
-        quan_pattern = [0] * num_keys
-        log_counter = Counter([mapping[event] for event, _, _ in events])
-        for key in log_counter:
-            quan_pattern[key] = log_counter[key]
-        quans_encoded.append(quan_pattern)
+    print(f"Processing {len(train_datas)} sequences in chunks of {chunk_size}...")
+    
+    for chunk_start in range(0, len(train_datas), chunk_size):
+        chunk_end = min(chunk_start + chunk_size, len(train_datas))
+        chunk_data = train_datas.iloc[chunk_start:chunk_end]
         
-        inp, com, tm = [], [], []
-        start_time = getDateTimeFromISO8601String(events[0][2])
-        for event, component, time in events:
-            cur_time = getDateTimeFromISO8601String(time)
-            inp.append(emb[event])
-            com.append(cop[str(component)] if str(component) in cop else cop.get(component, -1))
-            tm.append((cur_time - start_time).seconds)
+        inputs, outputs = [], []
+        for idx, row in tqdm(chunk_data.iterrows(), total=len(chunk_data), 
+                            desc=f"Processing chunk {chunk_start//chunk_size + 1}/{(len(train_datas)-1)//chunk_size + 1}"):
+            seqs = eval(row['EventSequence'])
+            len_seq = len(seqs)
+            # Need at least window_size + 1 events to create input/output pairs
+            if len_seq > window_size:
+                inputs.extend([seqs[i:i + window_size] for i in range(len_seq - window_size)])
+                outputs.extend([mapping[seqs[i + window_size][0]] for i in range(len_seq - window_size)])
+            # If sequence length equals window_size, use the whole sequence as input
+            # and predict the last event (self-prediction for training)
+            elif len_seq == window_size:
+                inputs.append(seqs)
+                outputs.append(mapping[seqs[-1][0]])
+        
+        if not inputs:
+            continue
             
-        inputs_encoded.append(inp)
-        coms_encoded.append(com)
-        time_encoded.append(tm)
+        inputs_encoded, coms_encoded, quans_encoded, time_encoded = [], [], [], []
+        for idx, events in enumerate(tqdm(inputs, desc=f"Encoding chunk {chunk_start//chunk_size + 1}")):
+            quan_pattern = [0] * num_keys
+            log_counter = Counter([mapping[event] for event, _, _ in events])
+            for key in log_counter:
+                quan_pattern[key] = log_counter[key]
+            quans_encoded.append(quan_pattern)
+            
+            inp, com, tm = [], [], []
+            start_time = getDateTimeFromISO8601String(events[0][2])
+            for event, component, time in events:
+                cur_time = getDateTimeFromISO8601String(time)
+                inp.append(emb[event])
+                com.append(cop[str(component)] if str(component) in cop else cop.get(component, -1))
+                tm.append((cur_time - start_time).seconds)
+                
+            inputs_encoded.append(inp)
+            coms_encoded.append(com)
+            time_encoded.append(tm)
+        
+        # Store attr_num from first chunk
+        if attr_num is None:
+            attr_num = len(inputs_encoded[0][0])
+        
+        # Convert to tensors and store
+        chunk_tensors = (
+            torch.as_tensor(inputs_encoded, dtype=torch.float),
+            torch.as_tensor(coms_encoded),
+            torch.as_tensor(quans_encoded, dtype=torch.float),
+            torch.as_tensor(time_encoded, dtype=torch.float),
+            torch.as_tensor(outputs)
+        )
+        all_tensors.append(chunk_tensors)
+        total_samples += len(inputs_encoded)
+        
+        print(f"Chunk {chunk_start//chunk_size + 1} processed: {len(inputs_encoded)} samples (Total: {total_samples})")
+        
+        # Clear memory
+        del inputs, outputs, inputs_encoded, coms_encoded, quans_encoded, time_encoded
+        import gc
+        gc.collect()
     
-    dataset = TensorDataset(
-        torch.as_tensor(inputs_encoded, dtype=torch.float),
-        torch.as_tensor(coms_encoded),
-        torch.as_tensor(quans_encoded, dtype=torch.float),
-        torch.as_tensor(time_encoded, dtype=torch.float),
-        torch.as_tensor(outputs)
-    )
+    # Concatenate all chunks
+    print("Concatenating all chunks...")
+    final_tensors = tuple(torch.cat([chunk[i] for chunk in all_tensors], dim=0) for i in range(5))
+    dataset = TensorDataset(*final_tensors)
     
     print(f'Number of {name}_seqs: {len(dataset)}, components: {len(cop)}')
     
-    return dataset, len(inputs_encoded[0][0]), len(logTemp.index.unique()), len(cop)
+    return dataset, attr_num, len(logTemp.index.unique()), len(cop)
 
 
 def generate_pre(name, log_path, logTemp_path, encoder_path, com_path, window_size):
