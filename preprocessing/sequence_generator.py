@@ -78,10 +78,10 @@ class SequenceGenerator:
     def _load_structured_logs(self, structured_csv: str, event_mapping: Dict[int, str],
                               component_ids: List[int], progress_bar: bool = True) -> List[Tuple]:
         """
-        Load logs from structured CSV with EventId, ComponentId, and Timestamp
+        Load logs from structured CSV with EventId, ComponentId, Timestamp, and Level
         
         Returns:
-            List of (EventId, ComponentId, Timestamp) tuples
+            List of (EventId, ComponentId, Timestamp, Level) tuples
         """
         logs = []
         
@@ -110,8 +110,13 @@ class SequenceGenerator:
                 # If timestamp is malformed (contains commas), try to extract just the ISO timestamp part
                 if isinstance(timestamp, str) and ',' in timestamp:
                     # Format: "2026-04-20T17:07:06.472+09:00,ERROR,cinder,..."
-                    # Extract just the timestamp part before first comma
-                    timestamp = timestamp.split(',')[0]
+                    # Extract timestamp and level
+                    parts = timestamp.split(',')
+                    timestamp = parts[0]
+                    level = parts[1] if len(parts) > 1 else 'INFO'
+                else:
+                    # Try to get Level from separate column
+                    level = row.get('Level', 'INFO')
                 
                 if not timestamp or pd.isna(timestamp):
                     continue
@@ -119,7 +124,7 @@ class SequenceGenerator:
                 # Get component ID
                 component_id = component_ids[idx] if idx < len(component_ids) else -1
                 
-                logs.append((event_id, component_id, timestamp))
+                logs.append((event_id, component_id, timestamp, level))
                 
             except Exception as e:
                 if idx < 10:
@@ -131,10 +136,10 @@ class SequenceGenerator:
     
     def _sliding_window(self, events: List[Tuple], progress_bar: bool = True) -> List[List]:
         """
-        Apply sliding window to create sequences
+        Apply sliding window to create sequences with anomaly detection
         
         Args:
-            events: List of (EventId, ComponentId, Timestamp) tuples
+            events: List of (EventId, ComponentId, Timestamp, Level) tuples
             progress_bar: Show progress bar
             
         Returns:
@@ -150,10 +155,13 @@ class SequenceGenerator:
             window = events[i:i + self.window_size]
             
             # Format as list of tuples (EventId, ComponentId, Timestamp)
-            event_sequence = [(eid, cid, ts) for eid, cid, ts in window]
+            # Note: We drop Level from the sequence but use it for labeling
+            event_sequence = [(eid, cid, ts) for eid, cid, ts, level in window]
             
-            # Default label is 0 (normal)
-            label = 0
+            # Label as anomaly (1) if any event in window has ERROR or CRITICAL level
+            has_error = any(level.upper() in ['ERROR', 'CRITICAL', 'FATAL'] 
+                          for eid, cid, ts, level in window)
+            label = 1 if has_error else 0
             
             sequences.append([f"S{session_id:06d}", str(event_sequence), label])
             session_id += 1
@@ -162,10 +170,10 @@ class SequenceGenerator:
     
     def _time_window(self, events: List[Tuple], progress_bar: bool = True) -> List[List]:
         """
-        Group events by time windows
+        Group events by time windows with anomaly detection
         
         Args:
-            events: List of (EventId, ComponentId, Timestamp) tuples
+            events: List of (EventId, ComponentId, Timestamp, Level) tuples
             progress_bar: Show progress bar
             
         Returns:
@@ -184,7 +192,7 @@ class SequenceGenerator:
         iterator = tqdm(events, desc="Creating time-based sequences") if progress_bar else events
         
         for event in iterator:
-            event_id, component_id, timestamp_str = event
+            event_id, component_id, timestamp_str, level = event
             
             try:
                 event_time = dateutil.parser.parse(timestamp_str)
@@ -205,8 +213,13 @@ class SequenceGenerator:
                 else:
                     # Save current window and start new one
                     if len(current_window) >= self.window_size:
-                        event_sequence = [(eid, cid, ts) for eid, cid, ts in current_window]
-                        sequences.append([f"S{session_id:06d}", str(event_sequence), 0])
+                        # Format sequence without Level
+                        event_sequence = [(eid, cid, ts) for eid, cid, ts, level in current_window]
+                        # Check for anomaly
+                        has_error = any(lvl.upper() in ['ERROR', 'CRITICAL', 'FATAL'] 
+                                      for eid, cid, ts, lvl in current_window)
+                        label = 1 if has_error else 0
+                        sequences.append([f"S{session_id:06d}", str(event_sequence), label])
                         session_id += 1
                     
                     # Start new window
@@ -215,8 +228,11 @@ class SequenceGenerator:
         
         # Add last window
         if len(current_window) >= self.window_size:
-            event_sequence = [(eid, cid, ts) for eid, cid, ts in current_window]
-            sequences.append([f"S{session_id:06d}", str(event_sequence), 0])
+            event_sequence = [(eid, cid, ts) for eid, cid, ts, level in current_window]
+            has_error = any(lvl.upper() in ['ERROR', 'CRITICAL', 'FATAL'] 
+                          for eid, cid, ts, lvl in current_window)
+            label = 1 if has_error else 0
+            sequences.append([f"S{session_id:06d}", str(event_sequence), label])
         
         return sequences
     
