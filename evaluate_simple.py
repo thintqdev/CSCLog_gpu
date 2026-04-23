@@ -215,50 +215,6 @@ def evaluate_model(model_path, data_dir, window_size=9, batch_size=128, device='
     
     print(f"\n✅ Results saved to: {results_path}")
     print("="*80)
-    
-    print("\n" + "="*80)
-    print("EVALUATION RESULTS")
-    print("="*80)
-    
-    accuracy = accuracy_score(all_labels, all_predictions)
-    precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_predictions, average='binary')
-    
-    print(f"\nOverall Metrics:")
-    print(f"  Accuracy:  {accuracy:.4f}")
-    print(f"  Precision: {precision:.4f}")
-    print(f"  Recall:    {recall:.4f}")
-    print(f"  F1-Score:  {f1:.4f}")
-    
-    # Confusion matrix
-    cm = confusion_matrix(all_labels, all_predictions)
-    print(f"\nConfusion Matrix:")
-    print(f"                Predicted")
-    print(f"              Normal  Anomaly")
-    print(f"Actual Normal   {cm[0][0]:6d}  {cm[0][1]:7d}")
-    print(f"      Anomaly   {cm[1][0]:6d}  {cm[1][1]:7d}")
-    
-    # Classification report
-    print(f"\nDetailed Classification Report:")
-    print(classification_report(all_labels, all_predictions, target_names=['Normal', 'Anomaly']))
-    
-    # Save results
-    results = {
-        'accuracy': float(accuracy),
-        'precision': float(precision),
-        'recall': float(recall),
-        'f1_score': float(f1),
-        'confusion_matrix': cm.tolist(),
-        'total_samples': len(all_labels),
-        'normal_samples': int(np.sum(all_labels == 0)),
-        'anomaly_samples': int(np.sum(all_labels == 1))
-    }
-    
-    results_path = f"{data_dir}/evaluation_results.json"
-    with open(results_path, 'w') as f:
-        json.dump(results, f, indent=2)
-    
-    print(f"\n✅ Results saved to: {results_path}")
-    print("="*80)
 
 
 def main():
