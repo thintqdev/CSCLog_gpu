@@ -57,22 +57,31 @@ class DataSplitter:
         print(f"Normal sequences: {len(normal_seqs)}")
         print(f"Anomaly sequences: {len(anomaly_seqs)}")
         
-        # Split normal sequences: 70% train, 15% val, 15% test
+        # Split normal sequences: 80% train, 20% test (or custom ratios)
         if len(normal_seqs) > 0:
-            # First split: train vs (val+test)
-            train_normal, temp_normal = train_test_split(
-                normal_seqs,
-                test_size=(self.val_ratio + self.test_ratio),
-                random_state=self.random_seed
-            )
-            
-            # Second split: val vs test
-            val_ratio_adjusted = self.val_ratio / (self.val_ratio + self.test_ratio)
-            val_normal, test_normal = train_test_split(
-                temp_normal,
-                test_size=(1 - val_ratio_adjusted),
-                random_state=self.random_seed
-            )
+            # If val_ratio is 0, do simple train/test split
+            if self.val_ratio == 0:
+                train_normal, test_normal = train_test_split(
+                    normal_seqs,
+                    test_size=self.test_ratio,
+                    random_state=self.random_seed
+                )
+                val_normal = pd.DataFrame(columns=sequences.columns)
+            else:
+                # First split: train vs (val+test)
+                train_normal, temp_normal = train_test_split(
+                    normal_seqs,
+                    test_size=(self.val_ratio + self.test_ratio),
+                    random_state=self.random_seed
+                )
+                
+                # Second split: val vs test
+                val_ratio_adjusted = self.val_ratio / (self.val_ratio + self.test_ratio)
+                val_normal, test_normal = train_test_split(
+                    temp_normal,
+                    test_size=(1 - val_ratio_adjusted),
+                    random_state=self.random_seed
+                )
         else:
             train_normal = pd.DataFrame(columns=sequences.columns)
             val_normal = pd.DataFrame(columns=sequences.columns)
