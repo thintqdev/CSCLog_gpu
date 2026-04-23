@@ -87,13 +87,19 @@ class DataSplitter:
             val_normal = pd.DataFrame(columns=sequences.columns)
             test_normal = pd.DataFrame(columns=sequences.columns)
         
-        # Split anomaly sequences: 0% train, 50% val, 50% test
+        # Split anomaly sequences: 0% train, rest goes to val/test
         if len(anomaly_seqs) > 0:
-            val_anomaly, test_anomaly = train_test_split(
-                anomaly_seqs,
-                test_size=0.5,
-                random_state=self.random_seed
-            )
+            if self.val_ratio == 0:
+                # No validation set, all anomalies go to test
+                val_anomaly = pd.DataFrame(columns=sequences.columns)
+                test_anomaly = anomaly_seqs
+            else:
+                # Split anomalies between val and test (50/50)
+                val_anomaly, test_anomaly = train_test_split(
+                    anomaly_seqs,
+                    test_size=0.5,
+                    random_state=self.random_seed
+                )
         else:
             val_anomaly = pd.DataFrame(columns=sequences.columns)
             test_anomaly = pd.DataFrame(columns=sequences.columns)
