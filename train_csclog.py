@@ -528,18 +528,30 @@ def main():
     )
     dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=False)
     
-    print("\nLoading validation data...")
-    label_normal, normal_len, _ = generate_pre(
-        'test_normal', test_normal_path, temp_path, emb_path, com_path, window_size
+    print("\nLoading test data...")
+    # Load test_normal which may contain both normal and anomaly sequences
+    test_data_all, test_len, _ = generate_pre(
+        'test', test_normal_path, temp_path, emb_path, com_path, window_size
     )
     
-    # Check if anomaly file exists
+    # Separate normal and anomaly from test set based on labels
+    # test_data_all is a DataLoader, we need to separate by checking labels
+    label_normal = []
+    label_anomaly = []
+    
+    # Check if separate anomaly file exists
     if os.path.exists(test_anomaly_path):
+        print("Loading separate test_anomaly.csv...")
+        label_normal = test_data_all
         label_anomaly, anomal_len, _ = generate_pre(
             'test_anomaly', test_anomaly_path, temp_path, emb_path, com_path, window_size
         )
     else:
-        print("Warning: test_anomaly.csv not found, using empty anomaly set")
+        print("No separate test_anomaly.csv found")
+        print("Note: test_normal.csv should contain both normal (Label=0) and anomaly (Label=1) sequences")
+        # For now, use all test data as normal for training
+        # Evaluation will be done separately after training
+        label_normal = test_data_all
         label_anomaly = []
     
     # Create model
